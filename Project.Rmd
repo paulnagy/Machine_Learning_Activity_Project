@@ -1,0 +1,83 @@
+---
+title: "Machine learning project on activity monitors"
+author: "Paul Nagy"
+date: "June 17, 2015"
+output: html_document
+---
+##Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it.   
+In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: <http://groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset). 
+
+```{r}
+library(caret)
+library(ggplot2)
+```
+
+##Data Sources
+The training data for this project are available here: 
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>
+
+The test data are available here: 
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+The data for this project come from this source: <http://groupware.les.inf.puc-rio.br/har>. If you use the document you create for this class for any purpose please cite them as they have been very generous in allowing their data to be used for this kind of assignment. 
+
+```{r, echo=FALSE}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", destfile = "./data_files/train.csv", method="curl")
+download.file("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", destfile = "./data_files/test.csv", method="curl")
+df <- read.csv("./data_files/train.csv", header=TRUE, na.strings=c("","NA"))
+validation_test <- read.csv("./data_files/test.csv", header=TRUE, na.strings=c("","NA"))
+```
+##Steps for Data Cleaning  
+1. Remove rows that have a Yes for new_window.  Exploring the data shows they rows as different from the rest.  They look like a summarization row. 
+2. Remove first 7 columns that do not contain quantitative sensor measures.  
+3. Use the nearZeroVar can identify variables that have little to no variance.  
+This removed 63 of the 160 columns of data.
+```{r}
+df<-df[df$new_window != "yes",]
+df<-df[,8:160]
+#Create training and testing data sets
+inTrain <- createDataPartition(df$classe, p=0.6, list=FALSE)
+training <- df[inTrain, ]
+testing <- df[-inTrain, ]
+
+bad_vars<-nearZeroVar(training)
+training<-training[,-bad_vars]
+training$classe<-as.factor(training$classe)
+```
+
+*Random Forest model
+```{r}
+set.seed(13234)
+modFit<-train(classe~.,data=training,method="rf")
+modFit$finalModel
+varImp(modFit)
+```
+The fitted model is looking good.  It has an internal OOB error rate of 0.85% on the training set data.  Lets see if it holds up on the testing data.
+
+#Cross Validation.
+  To cross validate we apply the model to the testing data set
+```{r}
+prediction<-predict(modFit,newdata=testing)
+confusionMatrix(prediction,testing$classe)
+```
+This model does the trick.  It has a 99% accuracy rate on the testing data set.
+```{r}
+qplot(x=roll_belt,y=pitch_forearm,data=training,color=classe)
+plot(modFit)
+```
+
+##Submission data for 
+```{r}
+prediction_testset<-predict(modFit,newdata=validation_test)
+answers<-prediction_testset
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(answers)
+```
